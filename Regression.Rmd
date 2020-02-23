@@ -1,0 +1,304 @@
+---
+title: "Prediction of Airfares using various regression techniques"
+author: "Manoj Bhandari"
+output: 
+  rmarkdown::github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# install.packages("tinytex")
+#tinytex::install_tinytex()
+```
+***
+Load the required packages to workspace
+```{r loadPackages, warning=FALSE, message=FALSE, results='hide' }
+
+if(!require("pacman")) install.packages("pacman")
+pacman::p_load(data.table, forecast, leaps, dplyr, corrplot, tinytex, 
+               ggplot2, tidyr, stats)
+```
+
+***
+
+# Create a correlation table and scatterplots between FARE and the predictors to check what seems to be the best single predictor of FARE.
+
+```{r, warning=FALSE, message=FALSE}
+library(data.table, corrplot)
+raw.data <- fread("Airfares.csv")
+d <- setDF(raw.data[, !1:4])
+num.ind <- unlist(lapply(d, is.numeric))
+numeric.data <- d[,num.ind]
+```
+
+**Displayed below is the correlation table between FARE and other predictors**
+
+```{r, warning=FALSE, message=FALSE}
+corrplot(cor(numeric.data)[10, -10,drop = FALSE], method = "pie", bg = "grey", 
+        title = "Fares vs Predictors")
+
+```
+
+**Displayed below is the scatter plot matrix between various predictors**
+```{r, warning=FALSE, message=FALSE}
+library(stats)
+
+plot(d$COUPON,d$FARE, xlab = "COUPON", ylab = "FARE", main = "COUPON vs FARE")
+abline(lm(d$FARE~d$COUPON))
+
+plot(d$NEW,d$FARE, xlab = "NEW", ylab = "FARE", main = "NEW vs FARE")
+abline(lm(d$FARE~d$NEW))
+
+plot(d$HI,d$FARE, xlab = "HI", ylab = "FARE", main = "HI vs FARE")
+abline(lm(d$FARE~d$HI))
+
+plot(d$S_INCOME,d$FARE, xlab = "S_INCOME", ylab = "FARE", main = "S_INCOME vs FARE")
+abline(lm(d$FARE~d$S_INCOME))
+
+plot(d$E_INCOME,d$FARE, xlab = "E_INCOME", ylab = "FARE", main = "E_INCOME vs FARE")
+abline(lm(d$FARE~d$E_INCOME))
+
+plot(d$S_POP,d$FARE, xlab = "S_POP", ylab = "FARE", main = "S_POP vs FARE")
+abline(lm(d$FARE~d$S_POP))
+
+plot(d$E_POP,d$FARE, xlab = "E_POP", ylab = "FARE", main = "E_POP vs FARE")
+abline(lm(d$FARE~d$E_POP))
+
+plot(d$DISTANCE,d$FARE, xlab = "DISTANCE", ylab = "FARE", main = "DISTANCE vs FARE")
+abline(lm(d$FARE~d$DISTANCE))
+
+plot(d$PAX,d$FARE, xlab = "PAX", ylab = "FARE", main = "PAX vs FARE")
+abline(lm(d$FARE~d$PAX))
+```
+
+
+**DISTANCE seems to be the single best predictor because of the following reasons:**
+
+1. From the correlation table, we observe that the correltion between FARE and DISTANCE has a strong positive relationship when compared to other predictors.
+2. Even logically, as the DISTANCE increases, the FARE usually increases to adjust the fuel price and other factors.
+
+***
+***
+
+# Explore the categorical predictors by computing the percentage of flights in each category and create a pivot table with the average fare in each category to check which categorical predictor seems best for predicting FARE.
+
+**Calculate the average mean of the FARE from the dataset to be compared with various categorical predictors**
+
+```{r, warning=FALSE, message=FALSE}
+library(dplyr,tidyr)
+avg <- mean(d$FARE)
+count <- nrow(d)
+```
+
+**Pivot Table of SW vs FARE**
+
+```{r Pivot Table of SW vs FARE, results='asis', warning=FALSE, message=FALSE}
+pivot1 <- d %>%
+select(SW,FARE) %>%
+group_by(SW) %>%
+summarise(Percentage_Of_Flights = (length(SW)/count) * 100,
+Average_Fares_SW = mean(FARE), 
+Variation_From_Average = mean(FARE) - avg)
+knitr::kable(pivot1, caption = "SW vs FARE")
+```
+
+**Pivot Table of VACATION vs FARE**
+
+```{r Pivot Table of VACTION vs FARE , warning=FALSE, message=FALSE}
+pivot2 <- d %>%
+  select(VACATION, FARE) %>%
+  group_by(VACATION) %>%
+  summarise(Percentage_Of_Flights = (length(VACATION)/count) * 100,
+            Average_Fares_VACATION = mean(FARE),
+            Variation_From_Average = mean(FARE) - avg)
+knitr::kable(pivot2, caption = "VACATION vs FARE")
+```
+
+**Pivot Table of GATE vs FARE**
+
+```{r Pivot Table of GATE vs FARE, warning=FALSE, message=FALSE}
+pivot3 <- d %>%
+  select(GATE, FARE) %>%
+  group_by(GATE) %>%
+  summarise(Percentage_Of_Flights = (length(GATE)/count) * 100,
+            Average_Fares_GATE = mean(FARE),
+            Variation_From_Average = mean(FARE) - avg)
+knitr::kable(pivot3, caption = "GATE vs FARE")
+```
+
+**Pivot Table of SLOT vs FARE**
+```{r Pivot Table of SLOT vs FARE, warning=FALSE, message=FALSE }
+pivot4 <- d %>%
+  select(SLOT, FARE) %>%
+  group_by(SLOT) %>%
+  summarise(Percentage_Of_Flights = (length(SLOT)/count) * 100,
+            Average_Fares_SLOT = mean(FARE),
+            Variation_From_Average = mean(FARE) - avg)
+knitr::kable(pivot4, caption = "SLOT vs FARE")
+```
+
+**The avaerage FARE of the data set is `r avg <- mean(d$FARE)`**
+**From all the pivot tables, we observe the following:**
+
+1. When SW = Yes, i.e., when Southwest airlines serves the route, we can see a great variation in the FARE with respect to average FARE. The average FARES decreases significantly when Southwest serves that route.
+2. When SW = No, i.e., when Sothwest airlines does not serve that route, the FARES are usually higher than the usual average FARE
+
+**We can infer that operation of Southwest airlines in a particular route serves in predicting the FARES.**
+
+***
+***
+
+
+**Splitting 80% of data into training dataset and 20% of remaining data into test/validation dataset**
+
+```{r,warning=FALSE, message=FALSE}
+library(stats)
+set.seed(42)
+sample <- sample.int(n = nrow(d), size = round(.80*nrow(d)))
+train <- d[sample, ]
+test  <- d[-sample, ]
+```
+
+**Running a linear regression on the training dataset and printing the summary of Linear Regression**
+
+```{r,warning=FALSE, message=FALSE}
+lin.model <- lm(FARE ~., data = train)
+options(scipen = 999)
+summary(lin.model)
+```
+
+***
+***
+
+# Using leaps package, run stepwise regression to reduce the number of predictors.
+
+```{r, warning=FALSE, message=FALSE}
+fare.stepwise.reg <- step(lin.model, direction = "both")
+summary(fare.stepwise.reg)
+fare.stepwise.pred <- predict(fare.stepwise.reg, test)
+```
+
+## Analysis of the summary:
+
+**The observations of the stepwise regressions are as below:**
+
+1. Initial number of predictors = 13
+2. Final number of predictors after running Stepwise linear regression = 10
+3. Three of the predictors, *NEW*, *S_INCOME* and *COUPON* were discarded by the regression
+
+
+
+***
+***
+
+# Repeat the process in (4) using exhaustive search instead of stepwise regression to compare the resulting best model to the one you obtained in (4) in terms of the predictors included in the final model.
+
+Running the exhaustive search and storing the summary of serahc results in  variable *sum*
+```{r, warning=FALSE, message=FALSE}
+search <- regsubsets(FARE ~ ., data = train, nbest = 1, nvmax = dim(train)[2],
+                     method = "exhaustive")
+sum <- summary(search)
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+res <- data.frame(
+  Adjusted.Rsquare = which.max(sum$adjr2),
+  CP = which.min(sum$cp),
+  BIC = which.min(sum$bic)
+)
+ind <- min(res)
+sum$which
+
+sum$rsq
+sum$adjr2
+sum$cp
+```
+
+**From the values of R-Squared, Adjusted R-Squared and CP, we can see that CP gives us the best model as after 10 variables, other variables start being insignificant. So we will consider the model with 10 variables as our best model**
+
+```{r, warning=FALSE, message=FALSE}
+myres <- as.vector(sum$which[ind,2:ncol(train)])
+best_variables <- train[,myres]
+best_model <- cbind(best_variables, FARE = train$FARE)
+blm <- lm(FARE ~. , data = best_model)
+summary(blm)
+fare.best.pred <- predict(blm, test)
+accuracy(fare.best.pred, test$FARE)
+```
+
+**When we compare the resulting best model of exhaustive search with the model generated by the stepwise regression, we can observe that the predictive accuracy of both the models are identical.**
+***
+***
+
+# Compare the predictive accuracy of both models—stepwise regression and exhaustive search—using measures such as RMSE.
+
+```{r, warning=FALSE, message=FALSE}
+accuracy(fare.stepwise.pred, test$FARE)
+accuracy(fare.best.pred, test$FARE)
+```
+
+**The predictive accuracy of both Stepwise regression and Exhaustive search is identical**
+
+***
+***
+
+# Using the exhaustive search model, let us predict the average fare on a route with the following characteristics: COUPON = 1.202, NEW = 3, VACATION = No, SW = No, HI = 4442.141, S_INCOME = $28,760, E_INCOME = $27,664, S_POP = 4,557,004, E_POP = 3,195,503, SLOT = Free, GATE = Free, PAX = 12,782, DISTANCE = 1976 miles.
+
+```{r, warning=FALSE, message=FALSE}
+data.pred <- data.frame(COUPON = 1.202, NEW = 3, VACATION = 'No', SW = 'No', HI = 4442.141,
+                        S_INCOME = 28760, E_INCOME = 27664, S_POP = 4557004, E_POP = 3195503,
+                        SLOT = 'Free', GATE = 'Free', PAX = 12782, DISTANCE = 1976)
+prediction <- predict(blm, data.pred)
+```
+ **The predicted value with 'SW = No' is -> `r prediction`**
+***
+***
+
+# Let us predict the reduction in average fare on the route in previous step, if Southwest decides to cover this route [using the exhaustive search model above].
+
+```{r, warning=FALSE, message=FALSE}
+data.pred1 <- data.frame(COUPON = 1.202, NEW = 3, VACATION = 'No', SW = 'Yes', HI = 4442.141,
+                        S_INCOME = 28760, E_INCOME = 27664, S_POP = 4557004, E_POP = 3195503,
+                        SLOT = 'Free', GATE = 'Free', PAX = 12782, DISTANCE = 1976)
+prediction1 <- predict(blm, data.pred1)
+```
+**The predicted value with 'SW = Yes' is -> `r prediction1`**
+
+***
+***
+
+# Using leaps package to run backward selection regression to reduce the number of predictors. 
+
+```{r, warning=FALSE, message=FALSE}
+fare.backward <- step(lin.model, direction = "backward")
+summary(fare.backward)
+fare.backward.pred <- predict(fare.backward, test)
+accuracy(fare.backward.pred, test$FARE)
+```
+
+1. The initial number of predictors are 13 before running backward selection regression
+2. The final number of predictors which are significant to the model are 10
+3. The variables that were removed are : *COUPON*, *NEW* and *S_INCOME*
+4. COUPON, S_INCOME and NEW were removed in Step 2,3 and 4 respectively
+
+***
+***
+
+# Let us run a backward selection model using stepAIC() function.
+
+```{r, warning=FALSE, message=FALSE}
+if(!require(MASS)) install.packages("MASS")
+fare.backwardAIC <- stepAIC(lin.model, direction = "backward")
+summary(fare.backwardAIC)
+fare.backward.predAIC <- predict(fare.backwardAIC, test)
+accuracy(fare.backward.predAIC, test$FARE)
+```
+
+
+1. Initially all the values are considered in a model with Start AIC = *3652.06* 
+2. In the second step, as *AIC of COUPON = 3650.8* < Start AIC of *3652.06*, COUPON is moved from the model
+3. In next step, *AIC=3650.81*, so the variable S_INCOME whose *AIC = 3649.8 < 3650.81* will be removed. 
+4. In the next step, *AIC = 3649.84*, so the variable NEW with *AIC = 3649.2 < 3649.84* will be removed
+5. In the next step, *AIC = 3649.22* and no variable has AIC less than this value. So the remaining variables are considered for the final model
+
